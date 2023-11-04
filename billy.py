@@ -1,8 +1,13 @@
 from collections import Counter
 import requests
+from datetime import datetime
 
 import config
 
+
+zat_start = datetime(2023, 11, 4, 14, 0)
+zon_mi = datetime(2023, 11, 5, 10, 0)
+zon_av = datetime(2023, 11, 5, 15, 30)
 
 def get_billy_data_json():
     headers = {'Authorization': config.auth_key}
@@ -17,6 +22,22 @@ def get_billy_data_json():
 def orders_sum(data):
     products_count = Counter()
     for order in data['data']:
+        print(f'{order=}')
+        # 2023-10-22T23:15:45+02:00
+        order_time = datetime.strptime(order['created_at'], '%Y-%m-%dT%H:%M:%S+01:00')
+        print(f'{order_time=}')
+        current_time = datetime.now()
+
+        if current_time > zon_av > order_time:
+            print('zon av')
+            continue
+        elif current_time > zon_mi > order_time:
+            print('zon mi')
+            continue
+        elif current_time > zat_start > order_time:
+            print('zaterdag')
+            continue
+
         for product in order['products']:
             products_count[product['name']] += product['amount']
     return products_count
@@ -24,8 +45,8 @@ def orders_sum(data):
 
 def get_product_count():
     import time
-    time.sleep(1)
-    return Counter({'Mosselen': 99, 'Balletjes': 888, 'Goulash': 123, 'Scoutsbootje': 111})
+    #time.sleep(1)
+    #return Counter({'Mosselen': 99, 'Balletjes': 888, 'Goulash': 123, 'Scoutsbootje': 111})
     
     
     ret_dict = Counter()
