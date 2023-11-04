@@ -23,6 +23,11 @@ def orders_sum(data):
 
 
 def get_product_count():
+    import time
+    time.sleep(1)
+    return Counter({'Mosselen': 99, 'Balletjes': 888, 'Goulash': 123, 'Scoutsbootje': 111})
+    
+    
     ret_dict = Counter()
 
     billy_data = get_billy_data_json()

@@ -1,1 +1,38 @@
-<OrderDashboard>
+#:kivy 2.1.0
+
+<StatusBar>:
+    size_hint: (1, 0.1)
+    
+    canvas.before:
+        Color:
+            rgba: 0.2, 0.2, 0.2, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    Label:
+        text: str(root.clock)
+        font_size: 40
+    Label:
+        text: 'this right aligned'
+        size_hint_x: None
+        size: self.texture_size
+        pos_hint: {'right': 1}
+    Label:
+        text: 'this on the right'
+
+<ProductLabel>:
+    text_size: self.size
+    halign: 'left'
+    valign: 'center'
+    
+<AmountLabel>:
+    text_size: self.size
+    halign: 'right'
+    valign: 'center'
+    
+<RefreshBar>:
+    max: 10
+    
+<RootWidget>:
+    orientation: vertical
+
