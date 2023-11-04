@@ -71,7 +71,11 @@ class OrderDashboard(GridLayout):
         threading.Thread(target=self.update_thread).start()
 
     def update_thread(self):
-        ordered_products = billy.get_product_count()
+        try:
+            ordered_products = billy.get_product_count()
+        except Exception as e:
+            print(e)
+            return
         self.update_amounts(ordered_products)
 
     @mainthread
