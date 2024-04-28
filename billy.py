@@ -1,67 +1,95 @@
 from collections import Counter
+from typing import Sequence
+from datetime import datetime, timedelta
+
 import requests
-from datetime import datetime
+import numpy as np
+import pandas
 
 import config
 
 
-zat_start = datetime(2023, 11, 4, 14, 0)
-zon_mi = datetime(2023, 11, 5, 10, 0)
-zon_av = datetime(2023, 11, 5, 15, 30)
+def fetch_data(session: requests.Session, report_type: str, start: datetime, end: datetime) -> bytes:
+    valid_types = ('orders', 'orders_products', 'day', 'day_products', 'products', 'takeout')
 
-def get_billy_data_json():
-    headers = {'Authorization': config.auth_key}
+    if report_type not in valid_types:
+        raise ValueError(f'{report_type=} is not a valid value!')
+    if start > end:
+        raise ValueError('start should happen before end!')
 
-    res = requests.get(
-        config.api_url,
-        headers=headers,
+    r = session.post(
+        url='https://manager.orderbilly.com/reports/report_download',
+        params={
+            'type': report_type,
+            'from': start.strftime('%y-%m-%d %H:%M:%S'),
+            'till': end.strftime('%y-%m-%d %H:%M:%S'),
+        },
     )
-    return res.json()
+    r.raise_for_status()
+    print('Data downloaded')
+
+    return r.content
 
 
-def orders_sum(data):
-    products_count = Counter()
-    for order in data['data']:
-        print(f'{order=}')
-        # 2023-10-22T23:15:45+02:00
-        order_time = datetime.strptime(order['created_at'], '%Y-%m-%dT%H:%M:%S+01:00')
-        print(f'{order_time=}')
-        current_time = datetime.now()
+def billy_session(username: str, password: str) -> requests.Session:
+    session = requests.Session()
 
-        if current_time > zon_av > order_time:
-            print('zon av')
-            continue
-        elif current_time > zon_mi > order_time:
-            print('zon mi')
-            continue
-        elif current_time > zat_start > order_time:
-            print('zaterdag')
-            continue
+    r = session.post(
+        url='https://manager.orderbilly.com/index_receive.php',
+        data={
+            'manager_email': username,
+            'manager_password': password
+        },
+    )
+    r.raise_for_status()
+    # Billy gives status code 200 when failing an authentication request.
+    # By checking the redirection url, it is possible to detect if the login failed.
+    # Success: https://manager.orderbilly.com/dashboard/start
+    # Failed: https://manager.orderbilly.com/?pass=no
+    if 'dashboard' not in r.url:
+        raise requests.exceptions.HTTPError("Login has failed")
 
-        for product in order['products']:
-            products_count[product['name']] += product['amount']
-    return products_count
+    print("Session created")
+
+    return session
 
 
-def get_product_count():
-    import time
-    #time.sleep(1)
-    #return Counter({'Mosselen': 99, 'Balletjes': 888, 'Goulash': 123, 'Scoutsbootje': 111})
-    
-    
-    ret_dict = Counter()
+def order_data(start: datetime, end: datetime = None) -> pandas.DataFrame:
+    if not end:
+        end = datetime.now() + timedelta(days=1)
 
-    billy_data = get_billy_data_json()
-    product_count = orders_sum(billy_data)
-    print(product_count)
+    with billy_session(config.username, config.password) as s:
+        data = fetch_data(s, 'orders_products', start, end)
 
-    for product, amount in product_count.items():
-        for base_product in config.base_products:
-            if base_product.lower() in product.lower():
-                ret_dict[base_product] += amount
-                continue
-    return ret_dict
+    cols = ['Menu', 'Prep Location', 'Order ID', 'Ordered at', 'Total Price', 'Table Number', 'User', 'PSP', 'Payment',
+            'Product Amount', 'Product Name', 'Additions']
+    orders = pandas.read_excel(data, header=1, usecols=cols)
+
+    return orders
+
+
+def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Counter:
+    if order_id and order_id in orders['Order ID'].values:
+        order_time = orders[orders['Order ID'] == order_id]['Ordered at'].values[0]
+        print(f"Got order ID {order_id}. Only showing orders after {np.datetime_as_string(order_time, unit='s')}")
+        orders = orders[orders['Ordered at'] > order_time]
+
+    # Sum of product amount for each product name
+    summed = orders.groupby('Product Name')['Product Amount'].sum()
+
+    product_counter = Counter()
+    for product in filters:
+        product_count = summed.filter(like=product).sum()
+        print(f"Product '{product}' has been ordered {product_count} times")
+        product_counter[product] = int(product_count)
+
+    return product_counter
 
 
 if __name__ == '__main__':
-    print(get_product_count())
+    orders_082024 = order_data(datetime(2023, 8, 1))
+    print(count_products(orders_082024,
+                         config.base_products,
+                         order_id=4335156,
+                         )
+          )

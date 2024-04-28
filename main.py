@@ -2,7 +2,7 @@
 
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from kivy.graphics import Color, Rectangle
 from kivy.lang import Builder
@@ -72,7 +72,8 @@ class OrderDashboard(GridLayout):
 
     def update_thread(self):
         try:
-            ordered_products = billy.get_product_count()
+            orders = billy.order_data(datetime.now()-timedelta(hours=8))
+            ordered_products = billy.count_products(orders, config.base_products)
         except Exception as e:
             print(e)
             return
