@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Sequence
+from typing import Sequence, Tuple
 from datetime import datetime, timedelta
 
 import requests
@@ -68,9 +68,11 @@ def order_data(start: datetime, end: datetime = None) -> pandas.DataFrame:
     return orders
 
 
-def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Counter:
+def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Tuple[Counter, datetime]:
+    wait_time = None
     if order_id and order_id in orders['Order ID'].values:
         order_time = orders[orders['Order ID'] == order_id]['Ordered at'].values[0]
+        wait_time = datetime.now() - order_time
         print(f"Got order ID {order_id}. Only showing orders after {np.datetime_as_string(order_time, unit='s')}")
         orders = orders[orders['Ordered at'] > order_time]
 
@@ -79,17 +81,20 @@ def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = 
 
     product_counter = Counter()
     for product in filters:
-        product_count = summed.filter(like=product).sum()
-        print(f"Product '{product}' has been ordered {product_count} times")
+        product_count = summed.filter(regex=f'^{product}').sum()
+        #print(f"Product '{product}' has been ordered {product_count} times")
         product_counter[product] = int(product_count)
 
-    return product_counter
+    return product_counter, wait_time
+
+
+def main():
+    orders = order_data(
+        start=datetime(2023, 11, 1),
+        end=datetime(2023, 11, 10),
+    )
+    print(count_products(orders, config.base_products))
 
 
 if __name__ == '__main__':
-    orders_082024 = order_data(datetime(2023, 8, 1))
-    print(count_products(orders_082024,
-                         config.base_products,
-                         order_id=4335156,
-                         )
-          )
+    main()

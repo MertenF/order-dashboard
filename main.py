@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+import re
 import time
 import threading
 from datetime import datetime, timedelta
@@ -9,6 +9,7 @@ from kivy.lang import Builder
 from kivy.properties import ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
+from kivy.uix.textinput import TextInput
 
 import config
 import billy
@@ -23,8 +24,11 @@ from kivy.clock import Clock, mainthread
 
 from kivy.core.window import Window
 
-SCALE = 0.5
-Window.size = (1024*SCALE, 1280*SCALE)
+SCALE = 1
+Window.size = (1080*SCALE, 1920*SCALE)
+
+order_id = None
+wait_time = None
 
 
 class ProductLabel(Label):
@@ -47,16 +51,16 @@ class OrderDashboard(GridLayout):
         self.thread = None
 
         self.labels_amount = {}
-        for product in config.base_products:
+        for product, product_config in config.products.items():
             label = ProductLabel(
-                text=product,
-                font_size=self.font_size,
+                text=product_config.get('display', product),
+                font_size=self.font_size * product_config.get('font_scale', 1),
                 padding=(self.padding_sides, 0, 0, 0)
             )
             #label.bind(size=label.setter('text_size'))
             self.add_widget(label)
 
-            amount = AmountLabel(text='0', font_size=self.font_size, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0))
+            amount = AmountLabel(text='0', font_size=self.font_size*product_config.get('font_scale', 1), size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0))
             self.labels_amount[product] = amount
             self.add_widget(amount)
 
@@ -72,8 +76,9 @@ class OrderDashboard(GridLayout):
 
     def update_thread(self):
         try:
-            orders = billy.order_data(datetime.now()-timedelta(hours=8))
-            ordered_products = billy.count_products(orders, config.base_products)
+            orders = billy.order_data(start_of_shift())
+            global wait_time
+            ordered_products, wait_time = billy.count_products(orders, config.products.keys(), order_id)
         except Exception as e:
             print(e)
             return
@@ -89,13 +94,47 @@ class OrderDashboard(GridLayout):
         self.labels_amount['Totaal'].text = str(sum(ordered_products.values()))
 
 
+def start_of_shift() -> datetime:
+    now = datetime.now()
+    for shift_start in config.shift_starts[::-1]:
+        if now > shift_start:
+            return shift_start
+    return config.shift_starts[0]
+
+
 class StatusBar(BoxLayout):
     clock = StringProperty('xx:xx:xx')
-    
+
+    def __init__(self):
+        super().__init__()
+        self.ids.order_input.bind(on_text_validate=self.on_enter)
+
+
     def set_time(self, dt=None):
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
         self.clock = current_time
+
+    def on_enter(self, value: TextInput):
+        try:
+            num = int(value.text)
+        except Exception:
+            num = None
+        print(f'Order number input: {num}')
+        global order_id
+        order_id = num
+
+        value.text = ''
+
+    def set_statistics(self, dt=None):
+        text = f'Order: #{order_id}\n'
+        if wait_time:
+            w = int(wait_time.total_seconds/60)
+        else: w = 0
+        text += f'Wachtijd: {w} min'
+
+        self.ids.stat_label.text = text
+
 
 class RefreshBar(ProgressBar):
     def update(self, dt):
@@ -112,7 +151,8 @@ class DashboardApp(App):
 
         status = StatusBar()
         layout.add_widget(status)
-        Clock.schedule_interval(status.set_time, 0.1)
+        Clock.schedule_interval(status.set_time, 0.2)
+        Clock.schedule_interval(status.set_statistics, 1)
 
         self.dashboard = OrderDashboard()
         layout.add_widget(self.dashboard)

@@ -12,13 +12,17 @@
     Label:
         text: str(root.clock)
         font_size: 80
+    TextInput:
+        id: order_input
+        text: ''
+        multiline: False
+        font_size: 80
+        background_color: 0.4, 0.4, 0.4, 1
+        text_validate_unfocus: False
+        focus: True
     Label:
-        text: 'this right aligned'
-        size_hint_x: None
-        size: self.texture_size
-        pos_hint: {'right': 1}
-    Label:
-        text: 'this on the right'
+        id: stat_label
+        text: 'Order num'
 
 <ProductLabel>:
     text_size: self.size
