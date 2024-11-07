@@ -4,11 +4,9 @@ from datetime import datetime
 base_products = [
     'Mosselen',
     'Balletjes',
-    'Vegan Balletjes',
     'Scoutsbootje',
-    'Salade - Ham',
-    'Salade - Geroosterde',
-    'Salade - Tomaat',
+    'Veganschuit',
+    'Vegan Balletjes',
 ]
 
 products = {
@@ -18,33 +16,33 @@ products = {
     'Balletjes': {
 
     },
-    'Vegan Balletjes': {
-        'display': 'Vegan Bal',
-    },
     'Scoutsbootje': {
 
     },
-    'Salade - Ham': {
-        'display': 'SALAD Ham',
-        'font_scale': 0.5,
+    'Veganschuit': {
+        'display': 'Schuit',
     },
-    'Salade - Geroosterde': {
-        'display': 'SALAD Kikkererwt',
-        'font_scale': 0.5,
-    },
-    'Salade - Tomaat': {
-        'display': 'SALAD Tom-Moz',
-        'font_scale': 0.5,
+    'Vegan Balletjes': {
+        'display': 'Vegan Bal',
     },
 }
 
 username = 'dorst_kassa@scoutswvb.be'
 password = ''
 
-shift_starts = [
+vlms24 = [
     datetime(2024, 8, 13, 17, 0),   # error prevent
     datetime(2024, 8, 16, 17, 30),  # VR AV
     datetime(2024, 8, 17, 16, 30),  # ZA AV
     datetime(2024, 8, 18, 11, 0),   # ZO MI
     datetime(2024, 8, 18, 16, 30),  # ZO AV
 ]
+
+mf24 = [
+    datetime(2024, 11, 9, 8,0),
+    datetime(2024, 11, 9, 16,0),
+    datetime(2024, 11, 10, 9,0),
+    datetime(2024, 11, 10, 16,0),
+]
+
+shift_starts = mf24
