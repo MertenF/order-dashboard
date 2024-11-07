@@ -1,4 +1,5 @@
 from collections import Counter
+from io import BytesIO
 from typing import Sequence, Tuple
 from datetime import datetime, timedelta
 
@@ -63,17 +64,20 @@ def order_data(start: datetime, end: datetime = None) -> pandas.DataFrame:
 
     cols = ['Menu', 'Prep Location', 'Order ID', 'Ordered at', 'Total Price', 'Table Number', 'User', 'PSP', 'Payment',
             'Product Amount', 'Product Name', 'Additions']
-    orders = pandas.read_excel(data, header=1, usecols=cols)
-
+    orders = pandas.read_excel(BytesIO(data), header=1, usecols=cols)
     return orders
 
 
-def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Tuple[Counter, datetime]:
-    wait_time = None
+def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Tuple[Counter, int]:
+    wait_time_min = None
+
     if order_id and order_id in orders['Order ID'].values:
-        order_time = orders[orders['Order ID'] == order_id]['Ordered at'].values[0]
+        order_time = pandas.to_datetime(orders[orders['Order ID'] == order_id]['Ordered at'].values[0])
+
         wait_time = datetime.now() - order_time
-        print(f"Got order ID {order_id}. Only showing orders after {np.datetime_as_string(order_time, unit='s')}")
+        wait_time_min = int(wait_time.total_seconds()/60)
+        print(f"Order ID {order_id}. Showing orders after {order_time}. Wait time: {wait_time_min}min")
+
         orders = orders[orders['Ordered at'] > order_time]
 
     # Sum of product amount for each product name
@@ -85,7 +89,7 @@ def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = 
         #print(f"Product '{product}' has been ordered {product_count} times")
         product_counter[product] = int(product_count)
 
-    return product_counter, wait_time
+    return product_counter, wait_time_min
 
 
 def main():
