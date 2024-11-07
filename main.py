@@ -10,6 +10,7 @@ from kivy.properties import ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.textinput import TextInput
+from pandas import DataFrame
 
 import config
 import billy
@@ -24,11 +25,12 @@ from kivy.clock import Clock, mainthread
 
 from kivy.core.window import Window
 
-SCALE = 1
-Window.size = (1080*SCALE, 1920*SCALE)
+SCALE = 0.3
+Window.size = (1200*SCALE, 1920*SCALE)
 
 order_id = None
 wait_time = None
+last_updated = None
 
 
 class ProductLabel(Label):
@@ -49,6 +51,7 @@ class OrderDashboard(GridLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.thread = None
+        self.orders = None
 
         self.labels_amount = {}
         for product, product_config in config.products.items():
@@ -75,13 +78,15 @@ class OrderDashboard(GridLayout):
         threading.Thread(target=self.update_thread).start()
 
     def update_thread(self):
-        try:
-            orders = billy.order_data(start_of_shift())
-            global wait_time
-            ordered_products, wait_time = billy.count_products(orders, config.products.keys(), order_id)
-        except Exception as e:
-            print(e)
-            return
+        self.orders = billy.order_data(start_of_shift())
+        self.update_orders_display()
+
+    def update_orders_display(self):
+        """Recalculate the orders"""
+        global wait_time, last_updated
+        ordered_products, wait_time = billy.count_products(self.orders, config.products.keys(), order_id)
+        last_updated = datetime.now()
+
         self.update_amounts(ordered_products)
 
     @mainthread
@@ -126,12 +131,18 @@ class StatusBar(BoxLayout):
 
         value.text = ''
 
+        app = App.get_running_app()
+        app.dashboard.update_orders_display()
+        self.set_statistics()
+
+
     def set_statistics(self, dt=None):
         text = f'Order: #{order_id}\n'
         if wait_time:
-            w = int(wait_time.total_seconds/60)
-        else: w = 0
-        text += f'Wachtijd: {w} min'
+            text += f'Wachtijd: {wait_time} min'
+            ago = datetime.now() - last_updated
+            ago_min = int(ago.total_seconds()/60)
+            text += f'\nUpdate {ago_min} min geleden'
 
         self.ids.stat_label.text = text
 
@@ -152,7 +163,7 @@ class DashboardApp(App):
         status = StatusBar()
         layout.add_widget(status)
         Clock.schedule_interval(status.set_time, 0.2)
-        Clock.schedule_interval(status.set_statistics, 1)
+        Clock.schedule_interval(status.set_statistics, 10)
 
         self.dashboard = OrderDashboard()
         layout.add_widget(self.dashboard)
