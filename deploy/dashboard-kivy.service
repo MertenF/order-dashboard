@@ -3,11 +3,14 @@ Description=Kivy dashboard app for showing orderBilly orders
 After=basic.target
 
 [Service]
-Type=idle
+# simple instead of idle: idle holds the start back up to 5 s until other boot jobs are done
+Type=simple
 User=scouts
 WorkingDirectory=/home/scouts/order-dashboard
 # Full-size layout on the 1080x1920 portrait screen
 Environment=DASHBOARD_SCALE=1
+# Show print() output in the journal right away instead of in blocks
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /home/scouts/order-dashboard/main.py
 # Come back by itself after a crash
 Restart=always

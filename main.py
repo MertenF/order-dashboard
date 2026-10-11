@@ -5,6 +5,7 @@ import socket
 import time
 import threading
 import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -27,6 +28,13 @@ def start_of_shift() -> datetime:
         if now > shift_start:
             return shift_start
     return config.shift_starts[0]
+
+
+# The first download (login, report, Excel parse) takes seconds on the Pi, and so does starting Kivy.
+# Start it before Kivy is imported so both run at the same time and the first amounts show sooner after boot.
+first_download: Optional[Future] = None
+if __name__ == '__main__':
+    first_download = ThreadPoolExecutor(max_workers=1).submit(billy.order_data, start_of_shift())
 
 import kivy
 kivy.require('2.3.0')
@@ -124,7 +132,13 @@ class OrderDashboard(GridLayout):
             self.add_widget(amount)
 
     def update_thread(self):
-        self.orders = billy.order_data(start_of_shift())
+        global first_download
+        if first_download is not None:
+            # Use the download started at launch; if it failed, this raises and the next update retries
+            download, first_download = first_download, None
+            self.orders = download.result()
+        else:
+            self.orders = billy.order_data(start_of_shift())
         self.update_orders_display()
 
     def update_orders_display(self):
