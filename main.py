@@ -1,14 +1,16 @@
 #!/usr/bin/python
+import os
 import re
+import socket
 import time
 import threading
 import traceback
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import datetime, timedelta
 
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Line, Rectangle
 from kivy.lang import Builder
-from kivy.properties import ObjectProperty, StringProperty
+from kivy.properties import NumericProperty, ObjectProperty, StringProperty
 from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
@@ -23,6 +25,7 @@ kivy.require('2.3.0')
 from kivy.app import App
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
+from kivy.uix.widget import Widget
 from kivy.uix.actionbar import ActionBar
 from kivy.clock import Clock, mainthread
 
@@ -123,8 +126,160 @@ class OrderDashboard(GridLayout):
             labels['Totaal'].text = str(sum(counts.values()))
 
 
+STALE_AFTER = timedelta(seconds=30)  # data older than this is flagged; updates run every 7s
 WAIT_ORANGE = 30  # minutes of wait time shown in orange
 WAIT_RED = 60  # minutes of wait time shown in red
+
+
+WIRELESS_PATH = '/proc/net/wireless'  # Linux only (e.g. the Raspberry Pi)
+ROUTE_PATH = '/proc/net/route'
+SYS_NET_PATH = '/sys/class/net'
+
+
+def default_interface(path: str = ROUTE_PATH) -> Optional[str]:
+    """Name of the Linux network interface carrying the default route (e.g. 'wlan0', 'eth0'), or None.
+
+    None on Windows (the file doesn't exist) or when there is no default route.
+    """
+    try:
+        with open(path) as f:
+            lines = f.readlines()[1:]  # skip the header line
+    except OSError:
+        return None
+    # Iface  Destination  Gateway  Flags  RefCnt  Use  Metric ...; default routes have destination 0.0.0.0.
+    # With several (cable and WiFi both up) the kernel uses the one with the lowest metric.
+    defaults = [line.split() for line in lines]
+    defaults = [fields for fields in defaults if len(fields) >= 7 and fields[1] == '00000000']
+    if not defaults:
+        return None
+    return min(defaults, key=lambda fields: int(fields[6]))[0]
+
+
+def is_wireless(interface: str, sys_path: str = SYS_NET_PATH) -> bool:
+    """Linux exposes a 'wireless' directory only for WiFi interfaces"""
+    return os.path.isdir(os.path.join(sys_path, interface, 'wireless'))
+
+
+def wifi_signal(interface: str, path: str = WIRELESS_PATH) -> Optional[float]:
+    """WiFi signal level in dBm of the given Linux interface, or None when unavailable.
+
+    Reads /proc/net/wireless (no extra packages or root needed, works on a Raspberry Pi).
+    """
+    try:
+        with open(path) as f:
+            lines = f.readlines()[2:]  # skip the two header lines
+    except OSError:
+        return None
+    for line in lines:
+        # e.g. " wlan0: 0000   54.  -56.  -256        0      0      0      0     29        0"
+        fields = line.split()
+        if len(fields) >= 4 and fields[0].rstrip(':') == interface:
+            try:
+                level = float(fields[3].rstrip('.'))
+            except ValueError:
+                return None
+            # a disconnected interface reports 0 (or a placeholder) instead of a dBm value
+            return level if level < 0 else None
+    return None
+
+
+def wifi_bars(signal: Optional[float]) -> int:
+    """Signal level in dBm to 1-4 bars (0 when unknown): above -67 dBm is solid, below -75 dBm expect dropped connections"""
+    if signal is None:
+        return 0
+    if signal >= -55:
+        return 4
+    if signal >= -67:
+        return 3
+    if signal >= -75:
+        return 2
+    return 1
+
+
+def connection_state(ip: Optional[str]) -> Tuple[str, int]:
+    """(kind, wifi bars) of the current connection; kind is 'wifi', 'cable', 'offline' or 'unknown'.
+
+    On Linux the default-route interface tells WiFi from cable. Elsewhere (Windows) only
+    'offline' vs 'unknown' (connected, type unknown) can be told apart without extra permissions.
+    """
+    if ip is None:
+        return 'offline', 0
+    interface = default_interface()
+    if interface is None:
+        return 'unknown', 0
+    if is_wireless(interface):
+        return 'wifi', wifi_bars(wifi_signal(interface))
+    return 'cable', 0
+
+
+class NetworkIcon(Widget):
+    """Drawn connection icon: WiFi bars, a network plug for cable, or a red cross when offline.
+    Drawn on the canvas, so no icon font is needed."""
+    kind = StringProperty('unknown')  # see connection_state()
+    bars = NumericProperty(0)
+    grey = (0.7, 0.7, 0.7, 1)
+    dim = (0.3, 0.3, 0.3, 1)
+    red = (1, 0.33, 0.33, 1)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self.redraw, size=self.redraw, kind=self.redraw, bars=self.redraw)
+
+    def bar_color(self):
+        if self.bars == 1:
+            return self.red
+        if self.bars == 2:
+            return 1, 0.67, 0.2, 1  # orange
+        return self.grey
+
+    def redraw(self, *args):
+        self.canvas.clear()
+        with self.canvas:
+            if self.kind in ('wifi', 'offline'):
+                self.draw_bars()
+            elif self.kind == 'cable':
+                self.draw_plug()
+            if self.kind == 'offline':
+                Color(*self.red)
+                Line(points=[self.x, self.top, self.right, self.y], width=1.5)
+                Line(points=[self.x, self.y, self.right, self.top], width=1.5)
+
+    def draw_bars(self):
+        count = 4
+        gap = self.width * 0.1
+        bar_width = (self.width - gap * (count - 1)) / count
+        for i in range(count):
+            filled = self.kind == 'wifi' and i < self.bars
+            Color(*(self.bar_color() if filled else self.dim))
+            Rectangle(pos=(self.x + i * (bar_width + gap), self.y), size=(bar_width, self.height * (i + 1) / count))
+
+    def draw_plug(self):
+        # Front view of a network plug: body, the latch tab below it and the contacts on top
+        Color(*self.grey)
+        body_width = self.width * 0.7
+        body_x = self.center_x - body_width / 2
+        body_y = self.y + self.height * 0.25
+        body_height = self.height * 0.75
+        Line(rectangle=(body_x, body_y, body_width, body_height), width=1.2)
+        tab_width = body_width * 0.4
+        Rectangle(pos=(self.center_x - tab_width / 2, self.y), size=(tab_width, self.height * 0.25))
+        for i in range(4):
+            x = body_x + body_width * (i + 1) / 5
+            Line(points=[x, self.top - body_height * 0.15, x, self.top - body_height * 0.45], width=1)
+
+
+def device_ip() -> Optional[str]:
+    """IP address of the interface with the default route, or None when there is no network.
+
+    Connecting a UDP socket only selects a route and sends nothing. Works on Windows and Linux,
+    unlike gethostbyname(gethostname()), which often returns 127.0.1.1 on Linux.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
 
 
 def digits_width(font_size: float, digits: int = 4) -> float:
@@ -254,6 +409,7 @@ class DashboardApp(App):
 
         Window.bind(on_resize=self.on_window_resize)
         self.thread = None
+        self.last_download = None  # time of the last successful download from Billy
 
     def build(self):
         layout = BoxLayout(orientation='vertical')
@@ -271,6 +427,16 @@ class DashboardApp(App):
         self.progress = ProgressBar(max=10, size_hint_y=None, height=50*SCALE)
         layout.add_widget(self.progress)
         Clock.schedule_interval(self.update_progress, 1/60)
+
+        # Info line for the headless screen: shift in use, data freshness and the device's IP
+        info_font = sp(40*SCALE)
+        info_row = BoxLayout(size_hint_y=None, height=info_font*1.8, padding=(0, 0, self.dashboard.padding_sides, 0))
+        self.info = Label(markup=True, font_size=info_font, color=(0.7, 0.7, 0.7, 1))
+        info_row.add_widget(self.info)
+        self.network_icon = NetworkIcon(size_hint=(None, None), size=(info_font*1.6, info_font*1.3), pos_hint={'center_y': 0.5})
+        info_row.add_widget(self.network_icon)
+        layout.add_widget(info_row)
+        Clock.schedule_interval(self.update_info, 1)
 
         self.start_update_thread()  # initialise values
 
@@ -292,6 +458,7 @@ class DashboardApp(App):
     def update(self):
         try:
             self.dashboard.update_thread()
+            self.last_download = datetime.now()
         except Exception:
             # Keep showing the last known amounts; the next scheduled update retries
             traceback.print_exc()
@@ -301,6 +468,21 @@ class DashboardApp(App):
     @mainthread
     def reset_progress(self):
         self.progress.value = 0
+
+    def update_info(self, dt=None):
+        parts = []
+        if self.last_download is None:
+            parts.append('[color=ff5555]Nog geen data[/color]')
+        elif datetime.now() - self.last_download > STALE_AFTER:
+            parts.append(f'[color=ff5555]Offline sinds {self.last_download:%H:%M}[/color]')
+        else:
+            parts.append(f'Update {self.last_download:%H:%M:%S}')
+
+        ip = device_ip()
+        self.network_icon.kind, self.network_icon.bars = connection_state(ip)
+        if ip:
+            parts.append(ip)
+        self.info.text = ' · '.join(parts)
 
     def on_window_resize(self, window, width, height):
         print(window, width, height)
