@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from kivy.graphics import Color, Rectangle
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty, StringProperty
+from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.textinput import TextInput
@@ -16,7 +17,7 @@ import config
 import billy
 
 import kivy
-kivy.require('2.1.0')
+kivy.require('2.3.0')
 from kivy.app import App
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
@@ -26,7 +27,7 @@ from kivy.clock import Clock, mainthread
 from kivy.core.window import Window
 
 SCALE = 0.3
-Window.size = (1200*SCALE, 1920*SCALE)
+Window.size = (1080*SCALE, 1920*SCALE)
 
 order_id = None
 wait_time = None
@@ -42,7 +43,7 @@ class AmountLabel(Label):
 
 
 class OrderDashboard(GridLayout):
-    font_size = 110*SCALE
+    font_size = sp(110*SCALE)
     amount_width = 290*SCALE
     padding_sides = int(40 * SCALE)
     totals_height = 400*SCALE
@@ -53,7 +54,8 @@ class OrderDashboard(GridLayout):
         self.thread = None
         self.orders = None
 
-        self.labels_amount = {}
+        self.labels_current_amount = {}
+        self.labels_total_amount = {}
         for product, product_config in config.products.items():
             label = ProductLabel(
                 text=product_config.get('display', product),
@@ -63,13 +65,16 @@ class OrderDashboard(GridLayout):
             #label.bind(size=label.setter('text_size'))
             self.add_widget(label)
 
-            amount = AmountLabel(text='0', font_size=self.font_size*product_config.get('font_scale', 1), size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0))
-            self.labels_amount[product] = amount
-            self.add_widget(amount)
+            curr_amount = AmountLabel(font_size=self.font_size*product_config.get('font_scale', 1), size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0))
+            self.labels_current_amount[product] = curr_amount
+            self.add_widget(curr_amount)
+
+            tot_amount = AmountLabel()
+
 
         self.add_widget(ProductLabel(text='Totaal', font_size=self.font_size, padding=(self.padding_sides, 0, 0, 0), size_hint_y=None, height=self.totals_height))
-        total = AmountLabel(text='0', font_size=self.font_size, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), size_hint_y=None, height=self.totals_height)
-        self.labels_amount['Totaal'] = total
+        total = AmountLabel(text='0000', font_size=self.font_size, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), size_hint_y=None, height=self.totals_height)
+        self.labels_current_amount['Totaal'] = total
         self.add_widget(total)
 
         self.start_update_thread()  # initialise values
@@ -95,8 +100,8 @@ class OrderDashboard(GridLayout):
         print(ordered_products)
 
         for product, amount in ordered_products.items():
-            self.labels_amount[product].text = str(amount)
-        self.labels_amount['Totaal'].text = str(sum(ordered_products.values()))
+            self.labels_current_amount[product].text = str(amount)
+        self.labels_current_amount['Totaal'].text = str(sum(ordered_products.values()))
 
 
 def start_of_shift() -> datetime:
@@ -155,7 +160,11 @@ class RefreshBar(ProgressBar):
 
 
 class DashboardApp(App):
-    thread = None
+    def __init__(self):
+        super().__init__()
+
+        Window.bind(on_resize=self.on_window_resize)
+        self.thread = None
     
     def build(self):
         layout = BoxLayout(orientation='vertical')
@@ -190,6 +199,10 @@ class DashboardApp(App):
     def update(self):
         self.dashboard.update_thread()
         self.progress.value = 0
+
+    def on_window_resize(self, window, width, height):
+        print(window, width, height)
+
 
 if __name__ == '__main__':
     DashboardApp().run()

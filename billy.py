@@ -16,7 +16,7 @@ def fetch_data(session: requests.Session, report_type: str, start: datetime, end
     if report_type not in valid_types:
         raise ValueError(f'{report_type=} is not a valid value!')
     if start > end:
-        raise ValueError('start should happen before end!')
+        raise ValueError(f'start should happen before end! {start=} {end=}')
 
     r = session.post(
         url='https://manager.orderbilly.com/reports/report_download',
@@ -33,6 +33,9 @@ def fetch_data(session: requests.Session, report_type: str, start: datetime, end
 
 
 def billy_session(username: str, password: str) -> requests.Session:
+    if not username or not password:
+        raise RuntimeError('Billy credentials missing: set BILLY_USERNAME and BILLY_PASSWORD in the environment or .env')
+
     session = requests.Session()
 
     r = session.post(
