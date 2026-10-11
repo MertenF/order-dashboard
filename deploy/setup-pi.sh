@@ -47,6 +47,14 @@ fi
 echo "== Access to screen and keyboard without a desktop"
 sudo usermod -aG video,render,input scouts
 
+echo "== Switch off services the dashboard doesn't need (faster boot, less SD card wear)"
+sudo dphys-swapfile swapoff 2>/dev/null || true
+for unit in ModemManager.service exim4.service exim4-base.timer bluetooth.service hciuart.service         e2scrub_reap.service e2scrub_all.timer triggerhappy.socket triggerhappy.service nfs-blkmap.service         nfs-client.target dphys-swapfile.service apt-daily.timer apt-daily-upgrade.timer networking.service         udisks2.service; do
+    sudo systemctl disable --now "$unit" 2>/dev/null || true
+done
+# started on demand over D-Bus otherwise
+sudo systemctl mask ModemManager.service udisks2.service
+
 echo "== Service"
 sudo cp "$DEPLOY_DIR/dashboard-kivy.service" /etc/systemd/system/dashboard-kivy.service
 sudo systemctl daemon-reload

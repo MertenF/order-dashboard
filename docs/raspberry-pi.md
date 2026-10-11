@@ -17,18 +17,19 @@ Files used for the setup live in [`deploy/`](../deploy):
 | What | Setting |
 |---|---|
 | Hardware | Raspberry Pi 4 Model B Rev 1.5, 2 GB RAM |
-| OS | Raspberry Pi OS Lite 64-bit, Debian 12 "bookworm" (image 2023-10-10), no desktop |
+| OS | Raspberry Pi OS Lite 64-bit (image 2023-10-10, Debian 12 "bookworm"), upgraded in place to Debian 13 "trixie" in October 2026; no desktop |
 | Hostname | `pi-order-monitor` (also reachable as `pi-order-monitor.local` via avahi) |
 | User | `scouts`, passwordless `sudo`, SSH with password or key |
 | Time | `Europe/Brussels`, NTP sync. The Pi has no clock battery, so the time is only right once it reached the internet; wait times depend on it |
 | Locale | `en_GB.UTF-8`, WiFi country `BE` (`cfg80211.ieee80211_regdom=BE` in `cmdline.txt`) |
-| Network | NetworkManager, WiFi on `wlan0` with saved networks `WVB` and `Hoepahoppa`; the Ethernet port is unused |
+| Network | NetworkManager, WiFi on `wlan0` with saved networks `WVB` and `Hoepahoppa`; a network cable on `eth0` also works (DHCP) |
 | Bluetooth | off (`dtoverlay=disable-bt` in `config.txt`) |
 | Screen | 1920x1080 HDMI screen on the **second HDMI port** (`HDMI-A-2`, the one furthest from the USB-C power), turned to portrait by Kivy (`rotation = 270`) |
 | Keyboard | USB keyboard "SIGMACHIP USB Keyboard" |
 | Drawing | no X/Wayland: Kivy draws straight to the screen (SDL2 on KMS/DRM, `dtoverlay=vc4-kms-v3d`). The user needs the `video`, `render` and `input` groups |
 | App | `~/order-dashboard`, a git clone of this repo, started by `dashboard-kivy.service` as user `scouts` with the system Python and Debian's `python3-kivy` and `python3-requests` |
-| Read-only | `overlayroot` package with `overlayroot=tmpfs` in `cmdline.txt`: every change to the SD card is kept in RAM and lost at reboot; `/boot/firmware` is mounted read-only |
+| Read-only | `overlayroot` package with `overlayroot=tmpfs` in `cmdline.txt`: every change to the SD card is kept in RAM and lost at reboot; `/boot/firmware` is mounted read-only. Turned off for the Debian 13 upgrade, see [Read-only overlay](#read-only-overlay) |
+| Services | switched off to start faster and leave the SD card and CPU to the dashboard: ModemManager and udisks2 (also masked), exim4 (local mail), bluetooth/hciuart, e2scrub, triggerhappy, NFS client, dphys-swapfile (no swap), ifupdown `networking`, and the daily apt timers. Kept: NetworkManager, avahi (for `.local`), ssh, time sync, cron |
 
 Leftovers that are not needed on a new Pi:
 
