@@ -9,6 +9,12 @@ import pandas
 
 import config
 
+# Seconds before a Billy request is abandoned, so a hung connection can't stall the dashboard forever
+TIMEOUT = 30
+
+# Logged-in session reused between order_data() calls
+_session = None
+
 
 def fetch_data(session: requests.Session, report_type: str, start: datetime, end: datetime) -> bytes:
     valid_types = ('orders', 'orders_products', 'day', 'day_products', 'products', 'takeout')
@@ -25,6 +31,7 @@ def fetch_data(session: requests.Session, report_type: str, start: datetime, end
             'from': start.strftime('%y-%m-%d %H:%M:%S'),
             'till': end.strftime('%y-%m-%d %H:%M:%S'),
         },
+        timeout=TIMEOUT,
     )
     r.raise_for_status()
     print('Data downloaded')
@@ -44,6 +51,7 @@ def billy_session(username: str, password: str) -> requests.Session:
             'manager_email': username,
             'manager_password': password
         },
+        timeout=TIMEOUT,
     )
     r.raise_for_status()
     # Billy gives status code 200 when failing an authentication request.
@@ -62,13 +70,23 @@ def order_data(start: datetime, end: datetime = None) -> pandas.DataFrame:
     if not end:
         end = datetime.now() + timedelta(days=1)
 
-    with billy_session(config.username, config.password) as s:
-        data = fetch_data(s, 'orders_products', start, end)
-
+    global _session
     cols = ['Menu', 'Prep Location', 'Order ID', 'Ordered at', 'Total Price', 'Table Number', 'User', 'PSP', 'Payment',
             'Product Amount', 'Product Name', 'Additions']
-    orders = pandas.read_excel(BytesIO(data), header=1, usecols=cols)
-    return orders
+
+    for attempt in range(2):
+        if _session is None:
+            _session = billy_session(config.username, config.password)
+        try:
+            data = fetch_data(_session, 'orders_products', start, end)
+            return pandas.read_excel(BytesIO(data), header=1, usecols=cols)
+        except Exception:
+            # The session may have expired, in which case Billy serves a page instead of the report.
+            # Drop it and log in again once before giving up.
+            _session.close()
+            _session = None
+            if attempt:
+                raise
 
 
 def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Tuple[Counter, int]:

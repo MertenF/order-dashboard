@@ -17,7 +17,8 @@ def set_table_sorting(session: requests.Session, tid_sorted: list):
     }
     r = session.post(
         url=table_path,
-        data=payload
+        data=payload,
+        timeout=billy.TIMEOUT,
     )
     print('Setting table sorting: ', end='')
     r.raise_for_status()
@@ -27,6 +28,7 @@ def set_table_sorting(session: requests.Session, tid_sorted: list):
 def fetch_table(session: requests.Session):
     r = session.get(
         url='https://manager.orderbilly.com/tables/accessandsorting',
+        timeout=billy.TIMEOUT,
     )
     print('Fetching current table list: ', end='')
     print(r)

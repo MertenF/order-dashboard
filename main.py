@@ -2,6 +2,7 @@
 import re
 import time
 import threading
+import traceback
 from datetime import datetime, timedelta
 
 from kivy.graphics import Color, Rectangle
@@ -77,11 +78,6 @@ class OrderDashboard(GridLayout):
         self.labels_current_amount['Totaal'] = total
         self.add_widget(total)
 
-        self.start_update_thread()  # initialise values
-
-    def start_update_thread(self, dt=None):
-        threading.Thread(target=self.update_thread).start()
-
     def update_thread(self):
         self.orders = billy.order_data(start_of_shift())
         self.update_orders_display()
@@ -89,6 +85,8 @@ class OrderDashboard(GridLayout):
     def update_orders_display(self):
         """Recalculate the orders"""
         global wait_time, last_updated
+        if self.orders is None:  # first download hasn't finished yet; it will apply order_id when it does
+            return
         ordered_products, wait_time = billy.count_products(self.orders, config.products.keys(), order_id)
         last_updated = datetime.now()
 
@@ -182,6 +180,8 @@ class DashboardApp(App):
         layout.add_widget(self.progress)
         Clock.schedule_interval(self.update_progress, 1/60)
 
+        self.start_update_thread()  # initialise values
+
         return layout
 
 
@@ -193,11 +193,21 @@ class DashboardApp(App):
         if self.thread and self.thread.is_alive():
             print('Previous thread is still running!')
             return
-        self.thread = threading.Thread(target=self.update)
+        # daemon, so a hanging request doesn't keep the process alive after the window is closed
+        self.thread = threading.Thread(target=self.update, daemon=True)
         self.thread.start()
 
     def update(self):
-        self.dashboard.update_thread()
+        try:
+            self.dashboard.update_thread()
+        except Exception:
+            # Keep showing the last known amounts; the next scheduled update retries
+            traceback.print_exc()
+        finally:
+            self.reset_progress()
+
+    @mainthread
+    def reset_progress(self):
         self.progress.value = 0
 
     def on_window_resize(self, window, width, height):
