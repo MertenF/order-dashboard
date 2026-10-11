@@ -24,7 +24,6 @@ base_products = [
     'Balletjes',
     'Scoutsbootje',
     'Veganschuit',
-    'Vegan Balletjes',
 ]
 
 products = {
@@ -35,13 +34,10 @@ products = {
 
     },
     'Scoutsbootje': {
-
+        'display': 'Boot',
     },
     'Veganschuit': {
-        'display': 'Schuit',
-    },
-    'Vegan Balletjes': {
-        'display': 'Vegan Bal',
+        'display': 'V-schuit',
     },
 }
 

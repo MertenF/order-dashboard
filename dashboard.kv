@@ -11,12 +11,15 @@
             size: self.size
     Label:
         text: str(root.clock)
-        font_size: 20
+        # As large as fits: "HH:MM:SS" is about 4 em wide
+        font_size: min(self.height * 0.7, self.width / 4.4)
     TextInput:
         id: order_input
         text: ''
         multiline: False
-        font_size: 80
+        # Fill the bar height and centre the text vertically; longer numbers scroll sideways
+        font_size: (self.height - 12) / 1.25
+        padding: [6, max(0, (self.height - self.line_height) / 2)]
         background_color: 0.4, 0.4, 0.4, 1
         text_validate_unfocus: False
         focus: True
@@ -35,6 +38,14 @@
     valign: 'center'
     text: '0000'
     
+<ShiftLabel>:
+    canvas.before:
+        Color:
+            rgba: 0.15, 0.15, 0.15, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
 <RefreshBar>:
     max: 10
     
