@@ -9,17 +9,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Optional, Tuple
 from datetime import datetime, timedelta
 
-from kivy.graphics import Color, Line, Rectangle
-from kivy.lang import Builder
-from kivy.properties import NumericProperty, ObjectProperty, StringProperty
-from kivy.metrics import dp, sp
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.progressbar import ProgressBar
-from kivy.uix.textinput import TextInput
-from pandas import DataFrame
-
 import config
-import billy
 
 
 def start_of_shift() -> datetime:
@@ -30,11 +20,38 @@ def start_of_shift() -> datetime:
     return config.shift_starts[0]
 
 
+NETWORK_WAIT = 60  # seconds the first download keeps retrying while the network comes up
+
+
+def download_first_orders():
+    """First download, retrying until the network is up: at boot the dashboard starts well before it is."""
+    # pandas (through billy) takes seconds to import on the Pi; importing it here overlaps that with Kivy's start
+    import billy
+    import requests
+    give_up = time.monotonic() + NETWORK_WAIT
+    while True:
+        try:
+            return billy.order_data(start_of_shift())
+        except requests.ConnectionError:
+            if time.monotonic() > give_up:
+                raise
+            time.sleep(1)
+
+
 # The first download (login, report, Excel parse) takes seconds on the Pi, and so does starting Kivy.
-# Start it before Kivy is imported so both run at the same time and the first amounts show sooner after boot.
+# Start it before anything from Kivy is imported so both run at the same time and the first amounts
+# show sooner after boot.
 first_download: Optional[Future] = None
 if __name__ == '__main__':
-    first_download = ThreadPoolExecutor(max_workers=1).submit(billy.order_data, start_of_shift())
+    first_download = ThreadPoolExecutor(max_workers=1).submit(download_first_orders)
+
+from kivy.graphics import Color, Line, Rectangle
+from kivy.lang import Builder
+from kivy.properties import NumericProperty, ObjectProperty, StringProperty
+from kivy.metrics import dp, sp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.progressbar import ProgressBar
+from kivy.uix.textinput import TextInput
 
 import kivy
 kivy.require('2.3.0')
@@ -47,6 +64,8 @@ from kivy.clock import Clock, mainthread
 
 from kivy.core.window import Window
 from kivy.core.text import Label as CoreLabel
+
+import billy  # after Kivy: while the first download is still importing it, this waits for that
 
 # 1 on the real 1080x1920 portrait screen (set by the Pi's service, see deploy/), 0.3 for a desktop preview
 SCALE = float(os.environ.get('DASHBOARD_SCALE', 0.3))
