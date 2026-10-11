@@ -20,6 +20,14 @@ from pandas import DataFrame
 import config
 import billy
 
+
+def start_of_shift() -> datetime:
+    now = datetime.now()
+    for shift_start in config.shift_starts[::-1]:
+        if now > shift_start:
+            return shift_start
+    return config.shift_starts[0]
+
 import kivy
 kivy.require('2.3.0')
 from kivy.app import App
@@ -42,7 +50,23 @@ wait_time = None
 
 
 class ProductLabel(Label):
-    pass
+    """Left-aligned name. With max_font_size set, a name too wide for its column gets a smaller font
+    so it stays on one line; names that fit keep max_font_size."""
+    max_font_size = NumericProperty(0)  # 0: keep font_size as given (headers)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(width=self.fit_font, text=self.fit_font, max_font_size=self.fit_font)
+        self.fit_font()
+
+    def fit_font(self, *args):
+        if not self.max_font_size:
+            return
+        available = self.width - self.padding[0] - self.padding[2]
+        needed = text_width(self.text, self.max_font_size)
+        # a little margin, so rounding never wraps the last letter onto a second line
+        scale = min(1, 0.97 * available / needed) if needed and available > 0 else 1
+        self.font_size = self.max_font_size * scale
 
 
 class AmountLabel(Label):
@@ -61,6 +85,7 @@ class OrderDashboard(GridLayout):
     header_font_size = font_size * 0.55  # largest that keeps "Na order" on one line in a 4-digit column
     header_height = header_font_size * 2
     header_color = (0.7, 0.7, 0.7, 1)
+    shift_scale = 0.85  # shift totals are secondary, so a bit smaller than the "Na order" amounts
     cols = 3
 
     def __init__(self, **kwargs):
@@ -71,6 +96,7 @@ class OrderDashboard(GridLayout):
         # Size the amount columns from the rendered width of 4 digits at the largest font used
         max_font = self.font_size * max([1] + [c.get('font_scale', 1) for c in config.products.values()])
         self.amount_width = digits_width(max_font) + self.padding_sides
+        self.shift_width = digits_width(max_font * self.shift_scale) + self.padding_sides
 
         # Header row: amounts since the entered order number, and for the whole shift
         header = dict(font_size=self.header_font_size, color=self.header_color, size_hint_y=None, height=self.header_height)
@@ -78,29 +104,24 @@ class OrderDashboard(GridLayout):
         # Shows the entered order ("Na #1234"); long numbers are cut from the left so the last digits stay visible
         self.order_header = AmountLabel(text='Na order', shorten=True, shorten_from='left', size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), **header)
         self.add_widget(self.order_header)
-        self.add_widget(ShiftLabel(text='Shift', size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), **header))
+        self.add_widget(ShiftLabel(text='Shift', size_hint_x=None, width=self.shift_width, padding=(0, 0, self.padding_sides, 0), **header))
 
         self.labels_current_amount = {}
         self.labels_total_amount = {}
         for product, product_config in config.products.items():
             font_size = self.font_size * product_config.get('font_scale', 1)
-            label = ProductLabel(
-                text=product_config.get('display', product),
-                font_size=font_size,
-                padding=(self.padding_sides, 0, 0, 0)
-            )
-            self.add_widget(label)
+            self.add_row(product, product_config.get('display', product), font_size)
+        self.add_row('Totaal', 'Totaal', self.font_size, size_hint_y=None, height=self.totals_height)
 
-            for labels, label_cls in ((self.labels_current_amount, AmountLabel), (self.labels_total_amount, ShiftLabel)):
-                amount = label_cls(font_size=font_size, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0))
-                labels[product] = amount
-                self.add_widget(amount)
-
-        self.add_widget(ProductLabel(text='Totaal', font_size=self.font_size, padding=(self.padding_sides, 0, 0, 0), size_hint_y=None, height=self.totals_height))
-        for labels, label_cls in ((self.labels_current_amount, AmountLabel), (self.labels_total_amount, ShiftLabel)):
-            total = label_cls(text='0000', font_size=self.font_size, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), size_hint_y=None, height=self.totals_height)
-            labels['Totaal'] = total
-            self.add_widget(total)
+    def add_row(self, key, name, font_size, **row):
+        # long names shrink to fit the column (see ProductLabel)
+        self.add_widget(ProductLabel(text=name, max_font_size=font_size, padding=(self.padding_sides, 0, 0, 0), **row))
+        columns = ((self.labels_current_amount, AmountLabel, font_size, self.amount_width),
+                   (self.labels_total_amount, ShiftLabel, font_size * self.shift_scale, self.shift_width))
+        for labels, label_cls, amount_font, width in columns:
+            amount = label_cls(font_size=amount_font, size_hint_x=None, width=width, padding=(0, 0, self.padding_sides, 0), **row)
+            labels[key] = amount
+            self.add_widget(amount)
 
     def update_thread(self):
         self.orders = billy.order_data(start_of_shift())
@@ -283,11 +304,16 @@ def device_ip() -> Optional[str]:
         return None
 
 
-def digits_width(font_size: float, digits: int = 4) -> float:
-    """Pixel width needed to render `digits` digits at font_size (sp already applied)."""
-    label = CoreLabel(text='0' * digits, font_size=font_size)
+def text_width(text: str, font_size: float) -> float:
+    """Pixel width needed to render text on one line at font_size (sp already applied)."""
+    label = CoreLabel(text=text, font_size=font_size)
     label.refresh()
     return label.texture.size[0]
+
+
+def digits_width(font_size: float, digits: int = 4) -> float:
+    """Pixel width needed to render `digits` digits at font_size (sp already applied)."""
+    return text_width('0' * digits, font_size)
 
 
 # Billy order IDs are 8 digits, so up to 4 digits (or with a colon) is a time: 1830, 18:30, 930
@@ -307,14 +333,6 @@ def parse_time(text: str, now: datetime) -> Optional[datetime]:
     if time > now:
         time -= timedelta(days=1)
     return time
-
-
-def start_of_shift() -> datetime:
-    now = datetime.now()
-    for shift_start in config.shift_starts[::-1]:
-        if now > shift_start:
-            return shift_start
-    return config.shift_starts[0]
 
 
 class StatusBar(BoxLayout):
