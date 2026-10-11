@@ -1,3 +1,4 @@
+import re
 from collections import Counter
 from io import BytesIO
 from typing import Sequence, Tuple
@@ -106,7 +107,7 @@ def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = 
 
     product_counter = Counter()
     for product in filters:
-        product_count = summed.filter(regex=f'^{product}').sum()
+        product_count = summed.filter(regex=f'^{re.escape(product)}').sum()
         #print(f"Product '{product}' has been ordered {product_count} times")
         product_counter[product] = int(product_count)
 
