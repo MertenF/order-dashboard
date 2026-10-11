@@ -46,9 +46,8 @@ if __name__ == '__main__':
     first_download = ThreadPoolExecutor(max_workers=1).submit(download_first_orders)
 
 from kivy.graphics import Color, Line, Rectangle
-from kivy.lang import Builder
-from kivy.properties import NumericProperty, ObjectProperty, StringProperty
-from kivy.metrics import dp, sp
+from kivy.properties import NumericProperty, StringProperty
+from kivy.metrics import sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.textinput import TextInput
@@ -59,7 +58,6 @@ from kivy.app import App
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
-from kivy.uix.actionbar import ActionBar
 from kivy.clock import Clock, mainthread
 
 from kivy.core.window import Window
