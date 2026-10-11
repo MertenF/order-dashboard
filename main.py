@@ -23,12 +23,30 @@ def start_of_shift() -> datetime:
 NETWORK_WAIT = 60  # seconds the first download keeps retrying while the network comes up
 
 
+def device_ip() -> Optional[str]:
+    """IP address of the interface with the default route, or None when there is no network.
+
+    Connecting a UDP socket only selects a route and sends nothing. Works on Windows and Linux,
+    unlike gethostbyname(gethostname()), which often returns 127.0.1.1 on Linux.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 def download_first_orders():
     """First download, retrying until the network is up: at boot the dashboard starts well before it is."""
     # requests takes a while to import on the Pi; importing it here overlaps that with Kivy's start
     import billy
     import requests
     give_up = time.monotonic() + NETWORK_WAIT
+    # A name lookup started before the network has an IPv4 address hangs for 5 s and then fails,
+    # so wait for one first
+    while device_ip() is None and time.monotonic() < give_up:
+        time.sleep(0.2)
     while True:
         try:
             return billy.order_data(start_of_shift())
@@ -320,20 +338,6 @@ class NetworkIcon(Widget):
         for i in range(4):
             x = body_x + body_width * (i + 1) / 5
             Line(points=[x, self.top - body_height * 0.15, x, self.top - body_height * 0.45], width=1)
-
-
-def device_ip() -> Optional[str]:
-    """IP address of the interface with the default route, or None when there is no network.
-
-    Connecting a UDP socket only selects a route and sends nothing. Works on Windows and Linux,
-    unlike gethostbyname(gethostname()), which often returns 127.0.1.1 on Linux.
-    """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(('8.8.8.8', 80))
-            return s.getsockname()[0]
-    except OSError:
-        return None
 
 
 def text_width(text: str, font_size: float) -> float:
