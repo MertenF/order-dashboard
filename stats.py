@@ -10,10 +10,10 @@ sns.set_theme()
 
 
 def main():
-    orders = billy.order_data(
+    orders = pandas.DataFrame(billy.order_data(
         start=datetime(2023, 11, 4, 17, 0),
         end=datetime(2023, 11, 4, 22, 0),
-    )
+    ), columns=billy.COLUMNS)
     pandas.options.display.width = 0
     orders['Product Name'] = orders['Product Name'].replace(
         regex=True,

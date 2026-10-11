@@ -25,7 +25,7 @@ NETWORK_WAIT = 60  # seconds the first download keeps retrying while the network
 
 def download_first_orders():
     """First download, retrying until the network is up: at boot the dashboard starts well before it is."""
-    # pandas (through billy) takes seconds to import on the Pi; importing it here overlaps that with Kivy's start
+    # requests takes a while to import on the Pi; importing it here overlaps that with Kivy's start
     import billy
     import requests
     give_up = time.monotonic() + NETWORK_WAIT
@@ -412,7 +412,7 @@ class StatusBar(BoxLayout):
             orders = app.dashboard.orders
             # Reject numbers that aren't in this shift's orders.
             # Before the first download there is nothing to check against, so accept it.
-            if orders is not None and num not in orders['Order ID'].values:
+            if orders is not None and not billy.has_order(orders, num):
                 print(f'Order {num} not found in this shift')
                 self.show_error(f'#{num}\nniet gevonden')
                 return

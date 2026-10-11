@@ -27,7 +27,7 @@ Files used for the setup live in [`deploy/`](../deploy):
 | Screen | 1920x1080 HDMI screen on the **second HDMI port** (`HDMI-A-2`, the one furthest from the USB-C power), turned to portrait by Kivy (`rotation = 270`) |
 | Keyboard | USB keyboard "SIGMACHIP USB Keyboard" |
 | Drawing | no X/Wayland: Kivy draws straight to the screen (SDL2 on KMS/DRM, `dtoverlay=vc4-kms-v3d`). The user needs the `video`, `render` and `input` groups |
-| App | `~/order-dashboard`, a git clone of this repo, started by `dashboard-kivy.service` as user `scouts` with the system Python and Debian's `python3-kivy` 2.1.0, `python3-pandas` 1.5.3, `python3-requests`, `python3-openpyxl` |
+| App | `~/order-dashboard`, a git clone of this repo, started by `dashboard-kivy.service` as user `scouts` with the system Python and Debian's `python3-kivy` and `python3-requests` |
 | Read-only | `overlayroot` package with `overlayroot=tmpfs` in `cmdline.txt`: every change to the SD card is kept in RAM and lost at reboot; `/boot/firmware` is mounted read-only |
 
 Leftovers that are not needed on a new Pi:
@@ -89,9 +89,6 @@ The script asks for the Billy manager e-mail and password once and stores them i
 | Network icon | WiFi bars; with a network cable plugged in the plug icon; with no network a red cross |
 | Clock | `timedatectl` shows `System clock synchronized: yes` |
 | Reboot | after `sudo reboot` the dashboard comes back by itself |
-
-Debian 13 also brings Python 3.13, pandas 2 and numpy 2. The code has not been run on those yet, so watch the
-journal for errors during the first test.
 
 ## Read-only overlay
 

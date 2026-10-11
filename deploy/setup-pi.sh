@@ -16,7 +16,7 @@ fi
 
 echo "== Packages"
 sudo apt-get update
-sudo apt-get install -y git python3-kivy python3-pandas python3-requests python3-openpyxl python3-bs4
+sudo apt-get install -y git python3-kivy python3-requests
 
 echo "== Code"
 if [ -d "$APP_DIR/.git" ]; then
