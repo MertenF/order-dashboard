@@ -32,9 +32,10 @@ def download_first_orders():
     while True:
         try:
             return billy.order_data(start_of_shift())
-        except requests.ConnectionError:
+        except requests.ConnectionError as error:
             if time.monotonic() > give_up:
                 raise
+            print(f'Network not ready, retrying: {error}')
             time.sleep(1)
 
 

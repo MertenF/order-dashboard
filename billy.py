@@ -9,8 +9,10 @@ import requests
 
 import config
 
-# Seconds before a Billy request is abandoned, so a hung connection can't stall the dashboard forever
-TIMEOUT = 30
+# Seconds to connect and to wait for an answer before a Billy request is abandoned, so a hung connection
+# can't stall the dashboard. Connecting takes well under a second; a short connect timeout means an
+# attempt stuck on a network that is still coming up (at boot) is retried soon instead of after 30 s.
+TIMEOUT = (3, 30)
 
 # Logged-in session reused between order_data() calls
 _session = None
