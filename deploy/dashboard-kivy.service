@@ -1,0 +1,17 @@
+[Unit]
+Description=Kivy dashboard app for showing orderBilly orders
+After=basic.target
+
+[Service]
+Type=idle
+User=scouts
+WorkingDirectory=/home/scouts/order-dashboard
+# Full-size layout on the 1080x1920 portrait screen
+Environment=DASHBOARD_SCALE=1
+ExecStart=/usr/bin/python3 /home/scouts/order-dashboard/main.py
+# Come back by itself after a crash
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

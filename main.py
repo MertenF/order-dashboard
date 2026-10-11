@@ -32,7 +32,8 @@ from kivy.clock import Clock, mainthread
 from kivy.core.window import Window
 from kivy.core.text import Label as CoreLabel
 
-SCALE = 0.3
+# 1 on the real 1080x1920 portrait screen (set by the Pi's service, see deploy/), 0.3 for a desktop preview
+SCALE = float(os.environ.get('DASHBOARD_SCALE', 0.3))
 Window.size = (1080*SCALE, 1920*SCALE)
 
 order_id = None
