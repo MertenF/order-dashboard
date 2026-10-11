@@ -3,6 +3,7 @@ import re
 import time
 import threading
 import traceback
+from typing import Optional
 from datetime import datetime, timedelta
 
 from kivy.graphics import Color, Rectangle
@@ -32,8 +33,8 @@ SCALE = 0.3
 Window.size = (1080*SCALE, 1920*SCALE)
 
 order_id = None
+since_time = None  # filter on a time instead of an order number (entered as e.g. 1830)
 wait_time = None
-last_updated = None
 
 
 class ProductLabel(Label):
@@ -70,8 +71,10 @@ class OrderDashboard(GridLayout):
         # Header row: amounts since the entered order number, and for the whole shift
         header = dict(font_size=self.header_font_size, color=self.header_color, size_hint_y=None, height=self.header_height)
         self.add_widget(ProductLabel(text='Product', padding=(self.padding_sides, 0, 0, 0), **header))
-        for text, label_cls in (('Na order', AmountLabel), ('Shift', ShiftLabel)):
-            self.add_widget(label_cls(text=text, size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), **header))
+        # Shows the entered order ("Na #1234"); long numbers are cut from the left so the last digits stay visible
+        self.order_header = AmountLabel(text='Na order', shorten=True, shorten_from='left', size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), **header)
+        self.add_widget(self.order_header)
+        self.add_widget(ShiftLabel(text='Shift', size_hint_x=None, width=self.amount_width, padding=(0, 0, self.padding_sides, 0), **header))
 
         self.labels_current_amount = {}
         self.labels_total_amount = {}
@@ -101,12 +104,11 @@ class OrderDashboard(GridLayout):
 
     def update_orders_display(self):
         """Recalculate the orders"""
-        global wait_time, last_updated
+        global wait_time
         if self.orders is None:  # first download hasn't finished yet; it will apply order_id when it does
             return
-        ordered_products, wait_time = billy.count_products(self.orders, config.products.keys(), order_id)
-        shift_products, _ = billy.count_products(self.orders, config.products.keys())  # never filtered by order_id
-        last_updated = datetime.now()
+        ordered_products, wait_time = billy.count_products(self.orders, config.products.keys(), order_id, since_time)
+        shift_products, _ = billy.count_products(self.orders, config.products.keys())  # never filtered
 
         self.update_amounts(ordered_products, shift_products)
 
@@ -121,11 +123,34 @@ class OrderDashboard(GridLayout):
             labels['Totaal'].text = str(sum(counts.values()))
 
 
+WAIT_ORANGE = 30  # minutes of wait time shown in orange
+WAIT_RED = 60  # minutes of wait time shown in red
+
+
 def digits_width(font_size: float, digits: int = 4) -> float:
     """Pixel width needed to render `digits` digits at font_size (sp already applied)."""
     label = CoreLabel(text='0' * digits, font_size=font_size)
     label.refresh()
     return label.texture.size[0]
+
+
+# Billy order IDs are 8 digits, so up to 4 digits (or with a colon) is a time: 1830, 18:30, 930
+TIME_INPUT = re.compile(r'^(\d{1,2}):?(\d{2})$')
+
+
+def parse_time(text: str, now: datetime) -> Optional[datetime]:
+    """Entered time as the most recent moment it occurred, or None when the text isn't a time.
+
+    A time later than now means yesterday, so 2330 entered at 00:15 is last evening.
+    Raises ValueError for time-shaped input that isn't a valid time, like 2575.
+    """
+    match = TIME_INPUT.match(text)
+    if not match:
+        return None
+    time = now.replace(hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0)
+    if time > now:
+        time -= timedelta(days=1)
+    return time
 
 
 def start_of_shift() -> datetime:
@@ -138,9 +163,12 @@ def start_of_shift() -> datetime:
 
 class StatusBar(BoxLayout):
     clock = StringProperty('xx:xx:xx')
+    error_shown = timedelta(seconds=30)
 
     def __init__(self):
         super().__init__()
+        self.error = None  # message about the last rejected input, shown for error_shown
+        self.error_at = None
         self.ids.order_input.bind(on_text_validate=self.on_enter)
 
 
@@ -150,30 +178,67 @@ class StatusBar(BoxLayout):
         self.clock = current_time
 
     def on_enter(self, value: TextInput):
-        try:
-            num = int(value.text)
-        except Exception:
-            num = None
-        print(f'Order number input: {num}')
-        global order_id
-        order_id = num
-
+        """Filter on an order number or a time (see TIME_INPUT); empty input clears the filter.
+        Invalid input shows an error and keeps the current filter."""
+        global order_id, since_time
+        text = value.text.strip()
         value.text = ''
+        print(f'Order input: {text!r}')
 
         app = App.get_running_app()
+        try:
+            entered_time = parse_time(text, datetime.now())
+        except ValueError:
+            self.show_error(f'{text}\nongeldige tijd')
+            return
+
+        if entered_time is not None:
+            order_id, since_time = None, entered_time
+        elif not text:
+            order_id, since_time = None, None
+        else:
+            try:
+                num = int(text)
+            except ValueError:
+                self.show_error(f'{text}\nongeldig')
+                return
+            orders = app.dashboard.orders
+            # Reject numbers that aren't in this shift's orders.
+            # Before the first download there is nothing to check against, so accept it.
+            if orders is not None and num not in orders['Order ID'].values:
+                print(f'Order {num} not found in this shift')
+                self.show_error(f'#{num}\nniet gevonden')
+                return
+            order_id, since_time = num, None
+
+        self.error = None
         app.dashboard.update_orders_display()
         self.set_statistics()
 
+    def show_error(self, message: str):
+        self.error = message
+        self.error_at = datetime.now()
+        self.set_statistics()
 
     def set_statistics(self, dt=None):
-        text = f'Order: #{order_id}\n'
-        if wait_time:
-            text += f'Wachtijd: {wait_time} min'
-            ago = datetime.now() - last_updated
-            ago_min = int(ago.total_seconds()/60)
-            text += f'\nUpdate {ago_min} min geleden'
+        label = self.ids.stat_label
+        if self.error and datetime.now() - self.error_at < self.error_shown:
+            small = int(label.font_size * 0.45)
+            label.text = f'[size={small}][color=ff5555]{self.error}[/color][/size]'
+        elif (order_id is not None or since_time is not None) and wait_time is not None:
+            colour = 'ff5555' if wait_time >= WAIT_RED else 'ffaa33' if wait_time >= WAIT_ORANGE else None
+            text = f'{wait_time} min'
+            label.text = f'[color={colour}]{text}[/color]' if colour else text
+        else:
+            label.text = ''
 
-        self.ids.stat_label.text = text
+        header = App.get_running_app().dashboard.order_header
+        if since_time is not None:
+            header.text = f'Na {since_time:%H:%M}'
+        elif order_id is not None:
+            header.text = f'Na #{order_id}'
+        else:
+            header.text = 'Na order'
 
 
 class RefreshBar(ProgressBar):
@@ -200,6 +265,7 @@ class DashboardApp(App):
 
         self.dashboard = OrderDashboard()
         layout.add_widget(self.dashboard)
+        Clock.schedule_once(status.set_statistics)  # fill the status box right away instead of after 10s
         Clock.schedule_interval(self.start_update_thread, 7)
 
         self.progress = ProgressBar(max=10, size_hint_y=None, height=50*SCALE)

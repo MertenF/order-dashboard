@@ -17,6 +17,8 @@
         id: order_input
         text: ''
         multiline: False
+        hint_text: 'Order'
+        hint_text_color: 0.75, 0.75, 0.75, 1
         # Fill the bar height and centre the text vertically; longer numbers scroll sideways
         font_size: (self.height - 12) / 1.25
         padding: [6, max(0, (self.height - self.line_height) / 2)]
@@ -25,7 +27,11 @@
         focus: True
     Label:
         id: stat_label
-        text: 'Order num'
+        # Wait time of the entered order, as large as fits ("999 min" is about 3.5 em wide)
+        text: ''
+        markup: True
+        halign: 'center'
+        font_size: min(self.height * 0.7, self.width / 4)
 
 <ProductLabel>:
     text_size: self.size

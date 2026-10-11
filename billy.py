@@ -90,17 +90,20 @@ def order_data(start: datetime, end: datetime = None) -> pandas.DataFrame:
                 raise
 
 
-def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None) -> Tuple[Counter, int]:
+def count_products(orders: pandas.DataFrame, filters: Sequence, order_id: int = None, since: datetime = None) -> Tuple[Counter, int]:
+    """Count ordered products per filter prefix. With order_id (or since) only orders placed after that
+    order (or time) are counted, and the wait time is the minutes since then."""
     wait_time_min = None
 
     if order_id and order_id in orders['Order ID'].values:
-        order_time = pandas.to_datetime(orders[orders['Order ID'] == order_id]['Ordered at'].values[0])
+        since = pandas.to_datetime(orders[orders['Order ID'] == order_id]['Ordered at'].values[0])
 
-        wait_time = datetime.now() - order_time
+    if since is not None:
+        wait_time = datetime.now() - since
         wait_time_min = int(wait_time.total_seconds()/60)
-        print(f"Order ID {order_id}. Showing orders after {order_time}. Wait time: {wait_time_min}min")
+        print(f"Showing orders after {since}. Wait time: {wait_time_min}min")
 
-        orders = orders[orders['Ordered at'] > order_time]
+        orders = orders[orders['Ordered at'] > since]
 
     # Sum of product amount for each product name
     summed = orders.groupby('Product Name')['Product Amount'].sum()
